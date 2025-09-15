@@ -1,14 +1,28 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 
-const API_KEY = process.env.API_KEY;
+// Safely access the API key to prevent crashing on platforms without process.env, like GitHub Pages.
+const API_KEY = (typeof process !== 'undefined' && process.env && process.env.API_KEY)
+  ? process.env.API_KEY
+  : undefined;
 
-if (!API_KEY) {
-  throw new Error("API_KEY environment variable not set");
+let ai: GoogleGenAI | undefined;
+
+if (API_KEY) {
+  ai = new GoogleGenAI({ apiKey: API_KEY });
+} else {
+  // Log a warning for developers. The user will see a graceful error in the UI.
+  console.warn("API_KEY is not set. AI functionality will be disabled until the key is provided in the deployment environment.");
 }
 
-const ai = new GoogleGenAI({ apiKey: API_KEY });
 const model = 'gemini-2.5-flash';
+
+// Helper function to ensure the AI client is initialized before use.
+const getAiClient = (): GoogleGenAI => {
+    if (!ai) {
+        throw new Error("Gemini AI client is not initialized. Please ensure the API_KEY is configured in your deployment environment.");
+    }
+    return ai;
+}
 
 // Data Structures
 export interface Location {
@@ -32,6 +46,7 @@ export const findSections = async (
   bookVersion: string,
   quoteDescription: string
 ): Promise<Section[]> => {
+  const aiClient = getAiClient();
     
   const systemInstruction = `You are an AI literary assistant. Your job is to analyze a document and identify sections relevant to a user's description. You must return your findings as a JSON array of objects. Each object must contain a 'summary' (a concise, one-sentence summary) and a 'location' object. The 'location' object should contain estimated 'chapter' (string or number) and 'page' (number) for where the section is. The document may contain page markers like '[Page X]'. Use these markers to determine page numbers.`;
 
@@ -41,7 +56,7 @@ Description: "${quoteDescription}"
 Book/File Version: ${bookVersion || 'Not specified'}`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await aiClient.models.generateContent({
       model: model,
       contents: {
         parts: [
@@ -85,6 +100,9 @@ Book/File Version: ${bookVersion || 'Not specified'}`;
 
   } catch (error) {
     console.error("Error calling Gemini API for finding sections:", error);
+    if (error instanceof Error && error.message.includes("API key not valid")) {
+         throw new Error("The configured API Key is invalid. Please check your deployment environment variables.");
+    }
     throw new Error("Failed to get response from AI model while identifying sections.");
   }
 };
@@ -95,6 +113,7 @@ export const findQuoteInSection = async (
   section: Section,
   originalQuoteDescription: string
 ): Promise<Quote | null> => {
+  const aiClient = getAiClient();
   const systemInstruction = `You are an AI literary assistant. Your task is to find the single most relevant quote from a document based on a user's description and a specific section summary. The user's description may be a paraphrase or a general idea, not an exact match. Your goal is to interpret their intent and extract the passage that best captures the essence of their description.
 
 RULES:
@@ -111,7 +130,7 @@ Please analyze the full document text, using this section as a strong hint for w
 Return a JSON object with the quote and its precise location.`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await aiClient.models.generateContent({
       model: model,
       contents: {
         parts: [
@@ -153,6 +172,9 @@ Return a JSON object with the quote and its precise location.`;
 
   } catch (error) {
     console.error("Error calling Gemini API for finding a quote:", error);
+    if (error instanceof Error && error.message.includes("API key not valid")) {
+         throw new Error("The configured API Key is invalid. Please check your deployment environment variables.");
+    }
     throw new Error("Failed to get response from AI model.");
   }
 };
