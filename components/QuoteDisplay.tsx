@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { QuoteIcon } from './Icons';
 import { Quote as QuoteData } from '../services/geminiService';
